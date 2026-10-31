@@ -86,7 +86,8 @@ class ReconstructionAgent:
         compatibility_score = 0.95
         explanation = "Physical damage aligns with claimed impact dynamics."
 
-        has_rear_narrative = narrative and any(k in narrative.impact_direction.lower() for k in ["rear", "behind", "back"])
+        narr_dir = (narrative.impact_direction or "").lower() if narrative else ""
+        has_rear_narrative = any(k in narr_dir for k in ["rear", "behind", "back"])
         if has_rear_narrative and "front" in photo_damage_zones and "rear" not in photo_damage_zones:
             is_consistent = False
             compatibility_score = 0.25

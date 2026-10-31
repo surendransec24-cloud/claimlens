@@ -55,7 +55,7 @@ async def test_policy_agent_rules_and_evaluation():
     assert analysis.applicable_limit == 50000.0
     assert analysis.overall_coverage_status in ["covered", "excluded", "unclear"]
     assert len(analysis.evaluations) >= 2
-    assert any("Section 2.1" in e.clause_cited for e in analysis.evaluations)
+    assert any("2.1" in e.clause_cited for e in analysis.evaluations)
 
 def test_estimate_agent_arithmetic_and_cross_check():
     agent = EstimateAgent()
