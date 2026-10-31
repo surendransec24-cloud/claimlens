@@ -16,5 +16,6 @@ class AuditLog(Base):
     decision = Column(String, nullable=True)
     reason = Column(Text, nullable=True)
     user_id = Column(String, default="adjuster_1")
+    user_role = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 

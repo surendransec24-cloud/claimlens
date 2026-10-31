@@ -2,11 +2,16 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models.claims_history import ClaimsHistory
+from backend.models.user import User
+from backend.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
 @router.get("")
-def list_claims_history(db: Session = Depends(get_db)):
+def list_claims_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     return db.query(ClaimsHistory).all()
 
 def seed_default_claims_history(db: Session):
@@ -41,4 +46,3 @@ def seed_default_claims_history(db: Session):
         ]
         db.add_all(samples)
         db.commit()
-

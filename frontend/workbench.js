@@ -1,3 +1,494 @@
+// =============================================================
+// AUTHENTICATION & SECURE SESSION MANAGEMENT
+// =============================================================
+// Production Notes:
+// 1. In production, enterprise deployments would integrate SAML 2.0 / OpenID Connect
+//    with Okta, Azure AD, or PingFederate, and enforce WebAuthn/FIDO2 MFA.
+// 2. All tokens are securely issued as HttpOnly, SameSite=Lax, Secure cookies.
+//    No tokens or plain credentials are ever stored in localStorage or sessionStorage.
+// 3. Sensitive operations require double-submit CSRF verification via X-CSRF-Token.
+
+let currentUser = null;
+let inactivityTimer = null;
+let warningTimer = null;
+let countdownInterval = null;
+let secondsRemaining = 60;
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const WARNING_TIMEOUT_MS = 14 * 60 * 1000;    // 14 minutes
+
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
+  return match ? decodeURIComponent(match[3]) : null;
+}
+
+function getCsrfToken() {
+  return getCookie("csrf_token") || "";
+}
+
+// Intercept window.fetch to automatically include CSRF token and handle silent refresh on 401
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async function (url, options = {}) {
+  options.credentials = options.credentials || "same-origin";
+  const method = (options.method || "GET").toUpperCase();
+
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    options.headers = options.headers || {};
+    const csrf = getCsrfToken();
+    if (csrf) {
+      if (options.headers instanceof Headers) {
+        options.headers.set("X-CSRF-Token", csrf);
+      } else {
+        options.headers["X-CSRF-Token"] = csrf;
+      }
+    }
+  }
+
+  const response = await _rawFetch(url, options);
+
+  // Silent refresh on 401 (except for login/logout/refresh endpoints themselves)
+  if (response.status === 401 && !url.includes("/api/auth/login") && !url.includes("/api/auth/refresh") && !url.includes("/api/auth/logout")) {
+    try {
+      const refreshRes = await _rawFetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "same-origin"
+      });
+
+      if (refreshRes.ok) {
+        // Refresh succeeded! Retry original request with updated CSRF token
+        if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+          const newCsrf = getCsrfToken();
+          if (newCsrf) {
+            if (options.headers instanceof Headers) {
+              options.headers.set("X-CSRF-Token", newCsrf);
+            } else {
+              options.headers["X-CSRF-Token"] = newCsrf;
+            }
+          }
+        }
+        return await _rawFetch(url, options);
+      } else {
+        // Refresh failed: session expired
+        renderUnauthenticated("Your session expired. Please sign in again.");
+      }
+    } catch (e) {
+      renderUnauthenticated("Your session expired. Please sign in again.");
+    }
+  }
+
+  return response;
+};
+
+function renderAuthenticated(user) {
+  currentUser = user;
+  const loginC = document.getElementById("loginContainer");
+  const appC = document.getElementById("appContainer");
+  if (loginC) loginC.classList.add("hidden");
+  if (appC) appC.classList.remove("hidden");
+
+  // Update Header User Profile
+  const nameEl = document.getElementById("headerUserName");
+  const roleEl = document.getElementById("headerUserRole");
+  const emailEl = document.getElementById("dropdownUserEmail");
+  const roleLineEl = document.getElementById("dropdownUserRoleLine");
+  const avatarEl = document.getElementById("userAvatar");
+  const adminBtn = document.getElementById("adminNavBtn");
+
+  if (nameEl) nameEl.textContent = user.full_name || user.email;
+  if (roleEl) roleEl.textContent = user.role;
+  if (emailEl) emailEl.textContent = user.email;
+  if (roleLineEl) roleLineEl.textContent = `Role: ${user.role}`;
+  if (avatarEl) avatarEl.textContent = (user.full_name || user.email)[0].toUpperCase();
+
+  // Role-based visibility
+  if (user.role === "admin") {
+    if (adminBtn) adminBtn.classList.remove("hidden");
+  } else {
+    if (adminBtn) adminBtn.classList.add("hidden");
+  }
+
+  resetInactivityTimer(true);
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function renderUnauthenticated(errorMessage = null) {
+  currentUser = null;
+  clearInactivityTimers();
+  const loginC = document.getElementById("loginContainer");
+  const appC = document.getElementById("appContainer");
+  if (appC) appC.classList.add("hidden");
+  if (loginC) loginC.classList.remove("hidden");
+
+  const errBox = document.getElementById("loginError");
+  const errText = document.getElementById("loginErrorText");
+  if (errorMessage && errBox && errText) {
+    errText.textContent = errorMessage;
+    errBox.classList.remove("hidden");
+  } else if (errBox) {
+    errBox.classList.add("hidden");
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  const emailInput = document.getElementById("loginEmail");
+  const passwordInput = document.getElementById("loginPassword");
+  const errBox = document.getElementById("loginError");
+  const errText = document.getElementById("loginErrorText");
+  const submitBtn = document.getElementById("loginSubmitBtn");
+  const spinner = document.getElementById("loginBtnSpinner");
+  const btnText = document.getElementById("loginBtnText");
+
+  errBox.classList.add("hidden");
+  submitBtn.disabled = true;
+  spinner.classList.remove("hidden");
+  btnText.textContent = "Signing in...";
+
+  try {
+    const res = await _rawFetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: emailInput.value.trim(),
+        password: passwordInput.value
+      }),
+      credentials: "same-origin"
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "Unable to sign in. Please verify your credentials.");
+    }
+
+    // Success
+    passwordInput.value = "";
+    renderAuthenticated(data.user);
+    await fetchCasesList();
+    goToStep(1);
+
+  } catch (err) {
+    errText.textContent = err.message || "Server unreachable. Please check your network connection.";
+    errBox.classList.remove("hidden");
+  } finally {
+    submitBtn.disabled = false;
+    spinner.classList.add("hidden");
+    btnText.textContent = "Sign in";
+  }
+}
+
+async function handleSignOut() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (e) {
+    // Ignore error
+  }
+  renderUnauthenticated();
+}
+
+function togglePasswordInput(id, btn) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const isPass = input.type === "password";
+  input.type = isPass ? "text" : "password";
+  btn.innerHTML = isPass ? '<i data-lucide="eye-off" class="w-4 h-4"></i>' : '<i data-lucide="eye" class="w-4 h-4"></i>';
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function fillDemoEmail(email) {
+  const emailInput = document.getElementById("loginEmail");
+  const passInput = document.getElementById("loginPassword");
+  if (emailInput) {
+    emailInput.value = email;
+    if (passInput) passInput.focus();
+  }
+}
+
+function toggleUserDropdown() {
+  const dd = document.getElementById("userDropdown");
+  if (dd) dd.classList.toggle("hidden");
+}
+
+document.addEventListener("click", (e) => {
+  const wrapper = document.getElementById("userMenuWrapper");
+  const dd = document.getElementById("userDropdown");
+  if (wrapper && dd && !wrapper.contains(e.target)) {
+    dd.classList.add("hidden");
+  }
+});
+
+// Inactivity handling
+function resetInactivityTimer(fromUserAction = true) {
+  if (!currentUser) return;
+
+  clearInactivityTimers();
+
+  const modal = document.getElementById("inactivityModal");
+  if (modal) modal.classList.add("hidden");
+
+  warningTimer = setTimeout(() => {
+    showInactivityWarning();
+  }, WARNING_TIMEOUT_MS);
+
+  inactivityTimer = setTimeout(() => {
+    handleSignOut();
+    renderUnauthenticated("You have been signed out due to 15 minutes of inactivity.");
+  }, INACTIVITY_TIMEOUT_MS);
+}
+
+function clearInactivityTimers() {
+  if (warningTimer) clearTimeout(warningTimer);
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  if (countdownInterval) clearInterval(countdownInterval);
+  warningTimer = null;
+  inactivityTimer = null;
+  countdownInterval = null;
+}
+
+function showInactivityWarning() {
+  const modal = document.getElementById("inactivityModal");
+  const countEl = document.getElementById("inactivityCountdown");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  secondsRemaining = 60;
+  if (countEl) countEl.textContent = `${secondsRemaining}s`;
+
+  countdownInterval = setInterval(() => {
+    secondsRemaining--;
+    if (countEl) countEl.textContent = `${secondsRemaining}s`;
+    if (secondsRemaining <= 0) {
+      clearInterval(countdownInterval);
+    }
+  }, 1000);
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// Change Password Handlers
+function openChangePasswordModal() {
+  const dd = document.getElementById("userDropdown");
+  if (dd) dd.classList.add("hidden");
+  document.getElementById("changePassError").classList.add("hidden");
+  document.getElementById("changePassSuccess").classList.add("hidden");
+  document.getElementById("changePasswordForm").reset();
+  document.getElementById("changePasswordModal").classList.remove("hidden");
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeChangePasswordModal() {
+  document.getElementById("changePasswordModal").classList.add("hidden");
+}
+
+async function handleChangePasswordSubmit(e) {
+  e.preventDefault();
+  const currentPass = document.getElementById("cpCurrent").value;
+  const newPass = document.getElementById("cpNew").value;
+  const confirmPass = document.getElementById("cpConfirm").value;
+  const errBox = document.getElementById("changePassError");
+  const succBox = document.getElementById("changePassSuccess");
+
+  errBox.classList.add("hidden");
+  succBox.classList.add("hidden");
+
+  if (newPass !== confirmPass) {
+    errBox.textContent = "New passwords do not match.";
+    errBox.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: currentPass, new_password: newPass })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Failed to update password.");
+
+    succBox.textContent = "Password updated successfully.";
+    succBox.classList.remove("hidden");
+    setTimeout(() => {
+      closeChangePasswordModal();
+    }, 1500);
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.remove("hidden");
+  }
+}
+
+// Admin Console Handlers
+function openAdminModal() {
+  document.getElementById("adminModal").classList.remove("hidden");
+  switchAdminTab('users');
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeAdminModal() {
+  document.getElementById("adminModal").classList.add("hidden");
+}
+
+function switchAdminTab(tab) {
+  const usersBtn = document.getElementById("adminTabUsersBtn");
+  const auditBtn = document.getElementById("adminTabAuditBtn");
+  const usersTab = document.getElementById("adminTabUsers");
+  const auditTab = document.getElementById("adminTabAudit");
+
+  if (tab === 'users') {
+    usersBtn.className = "pb-2 border-b-2 border-blue-600 text-blue-600";
+    auditBtn.className = "pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800";
+    usersTab.classList.remove("hidden");
+    auditTab.classList.add("hidden");
+    loadAdminUsers();
+  } else {
+    auditBtn.className = "pb-2 border-b-2 border-blue-600 text-blue-600";
+    usersBtn.className = "pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800";
+    auditTab.classList.remove("hidden");
+    usersTab.classList.add("hidden");
+    loadAdminAuditLog();
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function loadAdminUsers() {
+  const tbody = document.getElementById("adminUsersTableBody");
+  tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400">Loading accounts...</td></tr>';
+  try {
+    const res = await fetch("/api/admin/users");
+    if (!res.ok) throw new Error("Unauthorized or server error.");
+    const users = await res.json();
+    tbody.innerHTML = "";
+
+    users.forEach(u => {
+      const isLocked = u.is_locked;
+      const statusBadge = !u.is_active
+        ? '<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Inactive</span>'
+        : isLocked
+        ? '<span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-medium">Locked</span>'
+        : '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Active</span>';
+
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50 transition";
+      tr.innerHTML = `
+        <td class="p-2.5">
+          <div class="font-medium text-slate-900">${u.full_name}</div>
+          <div class="text-[11px] text-slate-400 font-mono">${u.email}</div>
+        </td>
+        <td class="p-2.5">
+          <span class="px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold bg-slate-100 text-slate-700 uppercase">${u.role}</span>
+        </td>
+        <td class="p-2.5">${statusBadge}</td>
+        <td class="p-2.5 text-slate-500">${u.last_login_at ? u.last_login_at.replace("T", " ").substring(0, 16) : "Never"}</td>
+        <td class="p-2.5 text-right space-x-1">
+          ${isLocked ? `<button onclick="unlockStaffUser('${u.id}')" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded font-medium text-[11px] transition">Unlock</button>` : ""}
+          <button onclick="toggleStaffActive('${u.id}', ${u.is_active})" class="px-2 py-1 rounded font-medium text-[11px] transition ${u.is_active ? 'bg-rose-50 hover:bg-rose-100 text-rose-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'}">
+            ${u.is_active ? 'Deactivate' : 'Activate'}
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-rose-500">${err.message}</td></tr>`;
+  }
+}
+
+async function handleAdminCreateUser(event) {
+  event.preventDefault();
+  const name = document.getElementById("newStaffName").value.trim();
+  const email = document.getElementById("newStaffEmail").value.trim();
+  const pass = document.getElementById("newStaffPassword").value;
+  const role = document.getElementById("newStaffRole").value;
+  const msgEl = document.getElementById("adminCreateUserMsg");
+
+  msgEl.classList.add("hidden");
+  try {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ full_name: name, email, password: pass, role })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Failed to create user.");
+
+    document.getElementById("adminCreateUserForm").reset();
+    msgEl.textContent = `User ${email} created successfully.`;
+    msgEl.className = "text-xs text-emerald-600 font-medium block";
+    msgEl.classList.remove("hidden");
+    await loadAdminUsers();
+  } catch (err) {
+    msgEl.textContent = err.message;
+    msgEl.className = "text-xs text-rose-600 font-medium block";
+    msgEl.classList.remove("hidden");
+  }
+}
+
+async function toggleStaffActive(userId, currentActive) {
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !currentActive })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.detail || "Failed to update status");
+    }
+    await loadAdminUsers();
+  } catch (err) {
+    alert("Error updating user status: " + err.message);
+  }
+}
+
+async function unlockStaffUser(userId) {
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unlock_account: true })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.detail || "Failed to unlock account");
+    }
+    await loadAdminUsers();
+  } catch (err) {
+    alert("Error unlocking user: " + err.message);
+  }
+}
+
+async function loadAdminAuditLog() {
+  const tbody = document.getElementById("adminAuditTableBody");
+  tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">Loading audit records...</td></tr>';
+  try {
+    const res = await fetch("/api/admin/audit?limit=50");
+    if (!res.ok) throw new Error("Unauthorized or server error.");
+    const logs = await res.json();
+    tbody.innerHTML = "";
+
+    logs.forEach(l => {
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50 transition";
+      tr.innerHTML = `
+        <td class="p-2.5 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+          ${l.timestamp ? l.timestamp.replace("T", " ").substring(0, 19) : ""}
+        </td>
+        <td class="p-2.5">
+          <span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold font-mono text-[10px] uppercase">${l.event_type}</span>
+        </td>
+        <td class="p-2.5 text-slate-700">
+          <div class="font-medium">${l.user_id ? l.user_id.substring(0, 8) + '...' : 'System'}</div>
+          <div class="text-[10px] text-slate-400 font-mono">${l.user_role || 'n/a'}</div>
+        </td>
+        <td class="p-2.5 text-slate-600">
+          <div>${l.input_summary || l.output_summary || ''}</div>
+          ${l.decision ? `<div class="text-[11px] font-semibold text-slate-800">Decision: ${l.decision} — "${l.reason || ''}"</div>` : ''}
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-rose-500">${err.message}</td></tr>`;
+  }
+}
+
 // ClaimLens — Simplified 4-Step Case Workbench
 // State Management
 let activeCaseId = null;
@@ -54,8 +545,26 @@ const STEP_HELP_TEXT = {
 document.addEventListener("DOMContentLoaded", async () => {
   if (window.lucide) window.lucide.createIcons();
   setupDragAndDrop();
-  await fetchCasesList();
-  goToStep(1);
+
+  // Inactivity tracking
+  ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'].forEach(evt => {
+    window.addEventListener(evt, () => resetInactivityTimer(true), { passive: true });
+  });
+
+  // Check authenticated state
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.ok) {
+      const user = await res.json();
+      renderAuthenticated(user);
+      await fetchCasesList();
+      goToStep(1);
+    } else {
+      renderUnauthenticated();
+    }
+  } catch (e) {
+    renderUnauthenticated();
+  }
 });
 
 // -------------------------------------------------------------

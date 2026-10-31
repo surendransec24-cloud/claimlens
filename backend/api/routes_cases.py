@@ -15,10 +15,12 @@ from backend.models.finding import Finding
 from backend.models.audit_log import AuditLog
 from backend.models.pipeline_state import PipelineState
 from backend.models.claims_history import ClaimsHistory
+from backend.models.user import User
 from backend.agents.intake_agent import IntakeAgent
 from backend.orchestration.pipeline import pipeline_runner
 from backend.config import settings
 from backend.api import sse_bus
+from backend.api.deps import get_current_user, verify_csrf
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 
@@ -34,13 +36,33 @@ class CaseCreateRequest(BaseModel):
 class AdjusterDecisionRequest(BaseModel):
     decision: str  # Approved, Request More Info, Escalated
     reason: str
-    adjuster_id: Optional[str] = "adjuster_1"
+    adjuster_id: Optional[str] = None
 
-@router.post("")
-def create_case(req: CaseCreateRequest, db: Session = Depends(get_db)):
+
+def _check_case_access(case: Case, user: User):
+    """
+    Adjuster sees and interacts only with cases they created (or legacy unassigned cases).
+    Supervisors and admins have full access across all cases.
+    """
+    if user.role in ["supervisor", "admin"]:
+        return
+    if case.creator_id and case.creator_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: You do not have permission to access cases assigned to another adjuster."
+        )
+
+
+@router.post("", dependencies=[Depends(verify_csrf)])
+def create_case(
+    req: CaseCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     c_num = req.claim_number or f"CLM-{uuid.uuid4().hex[:6].upper()}"
     new_case = Case(
         id=str(uuid.uuid4()),
+        creator_id=current_user.id,
         claim_number=c_num,
         policy_number=req.policy_number,
         claimant_name=req.claimant_name,
@@ -53,11 +75,47 @@ def create_case(req: CaseCreateRequest, db: Session = Depends(get_db)):
     db.add(new_case)
     db.commit()
     db.refresh(new_case)
-    return new_case
+
+    # Log case creation
+    log = AuditLog(
+        case_id=new_case.id,
+        event_type="case_created",
+        user_id=current_user.id,
+        user_role=current_user.role,
+        input_summary=f"Case created: {c_num} for claimant {req.claimant_name}",
+        output_summary=f"Case ID {new_case.id} assigned to creator {current_user.email}"
+    )
+    db.add(log)
+    db.commit()
+
+    return {
+        "id": new_case.id,
+        "claim_number": new_case.claim_number,
+        "policy_number": new_case.policy_number,
+        "claimant_name": new_case.claimant_name,
+        "vehicle_vin": new_case.vehicle_vin,
+        "vehicle_plate": new_case.vehicle_plate,
+        "incident_date": new_case.incident_date,
+        "incident_location": new_case.incident_location,
+        "status": new_case.status,
+        "creator_id": new_case.creator_id,
+        "created_at": new_case.created_at.isoformat() if new_case.created_at else None
+    }
+
 
 @router.get("")
-def list_cases(db: Session = Depends(get_db)):
-    cases = db.query(Case).order_by(Case.created_at.desc()).all()
+def list_cases(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Adjusters only see their own cases or legacy unassigned cases
+    if current_user.role == "adjuster":
+        cases = db.query(Case).filter(
+            (Case.creator_id == current_user.id) | (Case.creator_id == None)
+        ).order_by(Case.created_at.desc()).all()
+    else:
+        cases = db.query(Case).order_by(Case.created_at.desc()).all()
+
     results = []
     for c in cases:
         ev_count = db.query(EvidenceItem).filter(EvidenceItem.case_id == c.id).count()
@@ -71,17 +129,25 @@ def list_cases(db: Session = Depends(get_db)):
             "incident_location": c.incident_location,
             "status": c.status,
             "adjuster_decision": c.adjuster_decision,
+            "creator_id": c.creator_id,
             "evidence_count": ev_count,
             "findings_count": findings_count,
             "created_at": c.created_at.isoformat() if c.created_at else None
         })
     return results
 
+
 @router.get("/{case_id}")
-def get_case_detail(case_id: str, db: Session = Depends(get_db)):
+def get_case_detail(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     evidence_items = db.query(EvidenceItem).filter(EvidenceItem.case_id == case_id).all()
     findings = db.query(Finding).filter(Finding.case_id == case_id).all()
@@ -129,6 +195,7 @@ def get_case_detail(case_id: str, db: Session = Depends(get_db)):
             "decision": a.decision,
             "reason": a.reason,
             "user_id": a.user_id,
+            "user_role": a.user_role,
             "timestamp": a.timestamp.isoformat() if a.timestamp else None
         })
 
@@ -159,6 +226,7 @@ def get_case_detail(case_id: str, db: Session = Depends(get_db)):
             "status": case.status,
             "adjuster_decision": case.adjuster_decision,
             "adjuster_reason": case.adjuster_reason,
+            "creator_id": case.creator_id,
             "created_at": case.created_at.isoformat() if case.created_at else None
         },
         "evidence": evidence_out,
@@ -167,15 +235,19 @@ def get_case_detail(case_id: str, db: Session = Depends(get_db)):
         "audit_logs": audit_out
     }
 
-@router.post("/{case_id}/upload")
+
+@router.post("/{case_id}/upload", dependencies=[Depends(verify_csrf)])
 async def upload_evidence(
     case_id: str,
     files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     case_upload_dir = os.path.join(settings.UPLOAD_DIR, case_id)
     os.makedirs(case_upload_dir, exist_ok=True)
@@ -189,12 +261,10 @@ async def upload_evidence(
             out_f.write(contents)
         file_entries.append({"file_path": dest_path, "file_name": safe_filename})
 
-    # Find starting index for E1, E2...
     existing_count = db.query(EvidenceItem).filter(EvidenceItem.case_id == case_id).count()
     intake = IntakeAgent()
     created_items = intake.process_files(db, case_id, file_entries, start_index=existing_count + 1)
 
-    # Log to audit log
     for item in created_items:
         log = AuditLog(
             case_id=case_id,
@@ -202,7 +272,8 @@ async def upload_evidence(
             agent_name="IntakeAgent",
             input_summary=f"Uploaded file: {item.file_name} ({item.mime_type})",
             output_summary=f"Assigned ID: {item.id}, Classified as: {item.file_type}",
-            user_id="adjuster_1"
+            user_id=current_user.id,
+            user_role=current_user.role
         )
         db.add(log)
     db.commit()
@@ -213,11 +284,19 @@ async def upload_evidence(
         "items": [{"id": item.id, "file_name": item.file_name, "file_type": item.file_type} for item in created_items]
     }
 
-@router.post("/{case_id}/upload_preset/{bundle_id}")
-async def upload_bundle_preset(case_id: str, bundle_id: int, db: Session = Depends(get_db)):
+
+@router.post("/{case_id}/upload_preset/{bundle_id}", dependencies=[Depends(verify_csrf)])
+async def upload_bundle_preset(
+    case_id: str,
+    bundle_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     import shutil
     bundles_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "bundles"))
@@ -240,6 +319,19 @@ async def upload_bundle_preset(case_id: str, bundle_id: int, db: Session = Depen
     intake = IntakeAgent()
     created_items = intake.process_files(db, case_id, file_entries, start_index=1)
     
+    # Audit log
+    log = AuditLog(
+        case_id=case_id,
+        event_type="bundle_preset_uploaded",
+        agent_name="IntakeAgent",
+        input_summary=f"Uploaded bundle {bundle_id} ({len(created_items)} files)",
+        output_summary=f"Processed items for pipeline run",
+        user_id=current_user.id,
+        user_role=current_user.role
+    )
+    db.add(log)
+    db.commit()
+
     # Run pipeline
     state = await pipeline_runner.run_pipeline(case_id=case_id, db=db)
     return {
@@ -250,11 +342,17 @@ async def upload_bundle_preset(case_id: str, bundle_id: int, db: Session = Depen
     }
 
 
-@router.post("/{case_id}/run")
-async def run_case_pipeline(case_id: str, db: Session = Depends(get_db)):
+@router.post("/{case_id}/run", dependencies=[Depends(verify_csrf)])
+async def run_case_pipeline(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     try:
         case_state = await pipeline_runner.run_pipeline(case_id=case_id, db=db)
@@ -268,15 +366,19 @@ async def run_case_pipeline(case_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{case_id}/incremental")
+
+@router.post("/{case_id}/incremental", dependencies=[Depends(verify_csrf)])
 async def run_incremental(
     case_id: str,
     files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     case_upload_dir = os.path.join(settings.UPLOAD_DIR, case_id)
     os.makedirs(case_upload_dir, exist_ok=True)
@@ -295,6 +397,19 @@ async def run_incremental(
     created_items = intake.process_files(db, case_id, file_entries, start_index=existing_count + 1)
     new_ids = [item.id for item in created_items]
 
+    # Audit log
+    log = AuditLog(
+        case_id=case_id,
+        event_type="incremental_evidence_uploaded",
+        agent_name="IntakeAgent",
+        input_summary=f"Supplemental upload ({len(new_ids)} files)",
+        output_summary=f"Evidence IDs: {', '.join(new_ids)}",
+        user_id=current_user.id,
+        user_role=current_user.role
+    )
+    db.add(log)
+    db.commit()
+
     # Run incremental re-reasoning
     new_state = await pipeline_runner.run_incremental_re_reasoning(
         case_id=case_id,
@@ -309,15 +424,22 @@ async def run_incremental(
         "findings_count": len(new_state.findings)
     }
 
-@router.post("/{case_id}/decision")
+
+@router.post("/{case_id}/decision", dependencies=[Depends(verify_csrf)])
 def submit_adjuster_decision(
     case_id: str,
     req: AdjusterDecisionRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role not in ["adjuster", "supervisor"]:
+        raise HTTPException(status_code=403, detail="Forbidden: Only adjusters and supervisors can record decisions.")
+
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     if not req.reason.strip():
         raise HTTPException(status_code=400, detail="A mandatory justification reason is required for adjuster decision.")
@@ -332,9 +454,10 @@ def submit_adjuster_decision(
         event_type="adjuster_decision",
         decision=req.decision,
         reason=req.reason,
-        user_id=req.adjuster_id or "adjuster_1",
-        input_summary=f"Adjuster decision recorded: {req.decision}",
-        output_summary=f"Mandatory reason provided: {req.reason}"
+        user_id=current_user.id,
+        user_role=current_user.role,
+        input_summary=f"Decision recorded: {req.decision}",
+        output_summary=f"Mandatory justification: {req.reason}"
     )
     db.add(log)
     db.commit()
@@ -347,22 +470,26 @@ def submit_adjuster_decision(
     }
 
 
-# ─── SSE: Live pipeline status stream ───────────────────────────────────────
-
 @router.get("/{case_id}/stream")
-async def stream_pipeline_status(case_id: str, request: Request):
+async def stream_pipeline_status(
+    case_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Server-Sent Events endpoint. Clients connect here before calling /run;
     they receive real-time agent status updates as the pipeline progresses.
-
-    Event format:
-        data: {"agent": "VisionAgent", "status": "running"|"completed"|"failed",
-               "duration_ms": 342.1, "ts": 1234567890.123}
     """
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
+
     async def event_generator() -> AsyncGenerator[str, None]:
         q = sse_bus.subscribe(case_id)
         try:
-            # Send an initial heartbeat so the browser knows the connection is alive
             yield "event: connected\ndata: {\"case_id\": \"" + case_id + "\"}\n\n"
             while True:
                 if await request.is_disconnected():
@@ -373,7 +500,6 @@ async def stream_pipeline_status(case_id: str, request: Request):
                     if event.get("agent") == "__done__":
                         break
                 except asyncio.TimeoutError:
-                    # Send a keepalive comment so proxies don't drop the connection
                     yield ": keepalive\n\n"
         finally:
             sse_bus.unsubscribe(case_id, q)
@@ -388,8 +514,12 @@ async def stream_pipeline_status(case_id: str, request: Request):
     )
 
 
-@router.post("/{case_id}/run_stream")
-async def run_case_pipeline_stream(case_id: str, db: Session = Depends(get_db)):
+@router.post("/{case_id}/run_stream", dependencies=[Depends(verify_csrf)])
+async def run_case_pipeline_stream(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Runs the pipeline and publishes SSE events for each agent.
     Connect to GET /{case_id}/stream first to receive events.
@@ -397,6 +527,8 @@ async def run_case_pipeline_stream(case_id: str, db: Session = Depends(get_db)):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _check_case_access(case, current_user)
 
     async def sse_progress(event: dict):
         await sse_bus.publish(case_id, event)
@@ -407,7 +539,6 @@ async def run_case_pipeline_stream(case_id: str, db: Session = Depends(get_db)):
             db=db,
             progress_callback=sse_progress
         )
-        # Signal stream end
         await sse_bus.publish(case_id, {"agent": "__done__", "status": "completed"})
         return {
             "status": "success",

@@ -17,6 +17,7 @@ class Case(Base):
     status = Column(String, default="Pending human review")  # Always pending human review by default
     adjuster_decision = Column(String, nullable=True)       # Approved / Request More Info / Escalated
     adjuster_reason = Column(Text, nullable=True)
+    creator_id = Column(String, nullable=True, index=True)  # User who registered or initiated the case
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

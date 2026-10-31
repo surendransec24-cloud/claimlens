@@ -16,6 +16,108 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased text-base selection:bg-blue-600 selection:text-white">
 
+  <!-- ============================================================ -->
+  <!-- AUTHENTICATION / LOGIN VIEW (Shown when unauthenticated)    -->
+  <!-- ============================================================ -->
+  <div id="loginContainer" class="min-h-screen w-full flex flex-col justify-center items-center px-4 py-12 bg-slate-50">
+    <div class="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+      
+      <!-- Logo & Brand Tagline -->
+      <div class="text-center space-y-2">
+        <div class="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white mx-auto shadow-sm">
+          <i data-lucide="shield-alert" class="w-7 h-7"></i>
+        </div>
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900">ClaimLens</h1>
+        <p class="text-sm text-slate-500 font-medium">AI-assisted claims investigation</p>
+      </div>
+
+      <!-- Inline Error Banner (Accessible, role="alert") -->
+      <div id="loginError" role="alert" aria-live="polite" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-2.5">
+        <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5"></i>
+        <span id="loginErrorText" class="leading-snug"></span>
+      </div>
+
+      <!-- Login Form -->
+      <form id="loginForm" onsubmit="handleLoginSubmit(event)" class="space-y-4" novalidate>
+        <div>
+          <label for="loginEmail" class="block text-sm font-semibold text-slate-700 mb-1.5">Staff Email</label>
+          <input
+            id="loginEmail"
+            name="email"
+            type="email"
+            required
+            autocomplete="email"
+            class="w-full text-base px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+            placeholder="adjuster@claimlens.internal"
+          />
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="loginPassword" class="block text-sm font-semibold text-slate-700">Password</label>
+          </div>
+          <div class="relative">
+            <input
+              id="loginPassword"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+              class="w-full text-base px-3.5 py-2.5 pr-11 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+              placeholder="••••••••••••"
+            />
+            <button
+              type="button"
+              onclick="togglePasswordInput('loginPassword', this)"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 focus:outline-none"
+              aria-label="Toggle password visibility"
+            >
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <button
+          id="loginSubmitBtn"
+          type="submit"
+          class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-xl text-base shadow-sm transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <span id="loginBtnSpinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+          <span id="loginBtnText">Sign in</span>
+        </button>
+      </form>
+
+      <!-- Security / Audit Note -->
+      <div class="pt-2 border-t border-slate-100 text-center">
+        <p class="text-xs text-slate-400 flex items-center justify-center gap-1.5">
+          <i data-lucide="lock" class="w-3.5 h-3.5 text-slate-400"></i>
+          Authorized staff only. Activity is logged.
+        </p>
+      </div>
+
+      <!-- Quick Role Fillers (Accessibility / Demo Assistance) -->
+      <div class="pt-2 border-t border-slate-100">
+        <span class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 text-center">Staff Demo Accounts</span>
+        <div class="grid grid-cols-3 gap-1.5 text-center text-xs">
+          <button type="button" onclick="fillDemoEmail('adjuster@claimlens.internal')" class="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 font-medium transition truncate" title="Alex Adjuster">
+            Adjuster
+          </button>
+          <button type="button" onclick="fillDemoEmail('supervisor@claimlens.internal')" class="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 font-medium transition truncate" title="Sam Supervisor">
+            Supervisor
+          </button>
+          <button type="button" onclick="fillDemoEmail('admin@claimlens.internal')" class="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 font-medium transition truncate" title="Morgan Admin">
+            Admin
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MAIN WORKBENCH APP CONTAINER (Shown when authenticated)     -->
+  <!-- ============================================================ -->
+  <div id="appContainer" class="hidden min-h-screen flex flex-col">
   <!-- TOP APP HEADER -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between gap-4 shadow-sm">
     <div class="flex items-center gap-3">
@@ -56,9 +158,42 @@
         <span class="hidden sm:inline">Audit</span>
       </button>
 
+      <!-- Admin Console Shortcut (Admin Only) -->
+      <button id="adminNavBtn" onclick="openAdminModal()" class="hidden flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition" title="Staff Management & System Audit">
+        <i data-lucide="settings" class="w-3.5 h-3.5 text-blue-400"></i>
+        <span class="hidden sm:inline">Admin</span>
+      </button>
+
       <button onclick="openHelpModal()" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-bold border border-slate-200 transition" title="Explain this screen">
         ?
       </button>
+
+      <!-- User Profile & Sign-out Dropdown -->
+      <div class="relative" id="userMenuWrapper">
+        <button onclick="toggleUserDropdown()" id="userMenuBtn" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200/80 px-2.5 py-1.5 rounded-lg border border-slate-200 transition focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          <div class="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center uppercase" id="userAvatar">A</div>
+          <div class="text-left hidden md:block">
+            <div class="text-xs font-semibold text-slate-800 leading-tight" id="headerUserName">Staff User</div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider font-mono font-medium" id="headerUserRole">adjuster</div>
+          </div>
+          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-500"></i>
+        </button>
+
+        <!-- Dropdown Menu -->
+        <div id="userDropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 text-xs">
+          <div class="px-3.5 py-2 border-b border-slate-100">
+            <div class="font-semibold text-slate-900 truncate" id="dropdownUserEmail">user@claimlens.internal</div>
+            <div class="text-[10px] text-slate-400 mt-0.5" id="dropdownUserRoleLine">Role: adjuster</div>
+          </div>
+          <button onclick="openChangePasswordModal()" class="w-full text-left px-3.5 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2 transition">
+            <i data-lucide="key" class="w-3.5 h-3.5 text-slate-400"></i> Change Password
+          </button>
+          <div class="border-t border-slate-100 my-1"></div>
+          <button onclick="handleSignOut()" class="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 transition">
+            <i data-lucide="log-out" class="w-3.5 h-3.5 text-rose-500"></i> Sign out
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -827,6 +962,157 @@
     </div>
     <p class="text-xs text-slate-500 my-2">Every agent execution, prompt version, Gemini call, and adjuster decision is immutably logged.</p>
     <div id="auditDrawerEntries" class="space-y-2.5 text-xs"></div>
+  </div>
+
+  </div> <!-- End #appContainer -->
+
+  <!-- ============================================================ -->
+  <!-- MODAL: CHANGE PASSWORD                                      -->
+  <!-- ============================================================ -->
+  <div id="changePasswordModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="key" class="w-5 h-5 text-blue-600"></i> Change Password
+        </h3>
+        <button onclick="closeChangePasswordModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      
+      <div id="changePassError" class="hidden p-3 rounded-xl text-xs bg-rose-50 border border-rose-200 text-rose-700"></div>
+      <div id="changePassSuccess" class="hidden p-3 rounded-xl text-xs bg-emerald-50 border border-emerald-200 text-emerald-700"></div>
+
+      <form id="changePasswordForm" onsubmit="handleChangePasswordSubmit(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Current Password</label>
+          <input id="cpCurrent" type="password" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 outline-none focus:border-blue-600" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">New Password (min 10 chars, non-trivial)</label>
+          <input id="cpNew" type="password" required minlength="10" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 outline-none focus:border-blue-600" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Confirm New Password</label>
+          <input id="cpConfirm" type="password" required minlength="10" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 outline-none focus:border-blue-600" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeChangePasswordModal()" class="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+          <button type="submit" id="cpSubmitBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition">Update Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: ADMIN CONSOLE (Admin Only)                           -->
+  <!-- ============================================================ -->
+  <div id="adminModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col p-6 shadow-2xl border border-slate-200">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+            <i data-lucide="shield" class="w-4 h-4 text-blue-400"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Admin Console</h3>
+            <p class="text-xs text-slate-500">Staff account governance and immutable audit trail</p>
+          </div>
+        </div>
+        <button onclick="closeAdminModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <!-- Admin Tabs -->
+      <div class="flex items-center gap-4 border-b border-slate-200 my-3 text-xs font-semibold">
+        <button id="adminTabUsersBtn" onclick="switchAdminTab('users')" class="pb-2 border-b-2 border-blue-600 text-blue-600">Staff Accounts</button>
+        <button id="adminTabAuditBtn" onclick="switchAdminTab('audit')" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">System Audit Log</button>
+      </div>
+
+      <!-- Tab 1: Staff Accounts -->
+      <div id="adminTabUsers" class="flex-1 overflow-y-auto space-y-4 pr-1">
+        <!-- Create New User Form -->
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+          <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Create New Staff Account</h4>
+          <form id="adminCreateUserForm" onsubmit="handleAdminCreateUser(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+            <input id="newStaffName" type="text" placeholder="Full Name" required class="p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-600" />
+            <input id="newStaffEmail" type="email" placeholder="Email (unique)" required class="p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-600" />
+            <input id="newStaffPassword" type="password" placeholder="Password (min 10 chars)" required minlength="10" class="p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-600" />
+            <div class="flex gap-1.5">
+              <select id="newStaffRole" class="flex-1 p-2 bg-white border border-slate-200 rounded-lg outline-none font-medium">
+                <option value="adjuster">Adjuster</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button type="submit" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition whitespace-nowrap shadow-sm">Add</button>
+            </div>
+          </form>
+          <div id="adminCreateUserMsg" class="hidden text-xs"></div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 text-slate-600 border-b border-slate-200 font-semibold">
+              <tr>
+                <th class="p-2.5">Name / Email</th>
+                <th class="p-2.5">Role</th>
+                <th class="p-2.5">Status</th>
+                <th class="p-2.5">Last Login</th>
+                <th class="p-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody" class="divide-y divide-slate-100 bg-white">
+              <tr><td colspan="5" class="p-4 text-center text-slate-400">Loading accounts...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 2: System Audit Log -->
+      <div id="adminTabAudit" class="hidden flex-1 overflow-y-auto space-y-3 pr-1">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-500">Tamper-evident activity logs across all claims and staff:</span>
+          <button onclick="loadAdminAuditLog()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition">Refresh</button>
+        </div>
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 text-slate-600 border-b border-slate-200 font-semibold">
+              <tr>
+                <th class="p-2.5">Time (UTC)</th>
+                <th class="p-2.5">Event</th>
+                <th class="p-2.5">User / Role</th>
+                <th class="p-2.5">Summary / Detail</th>
+              </tr>
+            </thead>
+            <tbody id="adminAuditTableBody" class="divide-y divide-slate-100 bg-white">
+              <tr><td colspan="4" class="p-4 text-center text-slate-400">Loading audit records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: INACTIVITY WARNING DIALOG                            -->
+  <!-- ============================================================ -->
+  <div id="inactivityModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-200">
+      <div class="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+        <i data-lucide="clock" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-slate-900">Session Expiring Soon</h3>
+        <p class="text-xs text-slate-500 mt-1">
+          You have been inactive. For data security, your session will automatically end in:
+        </p>
+        <div class="text-2xl font-bold font-mono text-amber-600 mt-2" id="inactivityCountdown">60s</div>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button onclick="handleSignOut()" class="flex-1 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition">Sign out now</button>
+        <button onclick="resetInactivityTimer(true)" class="flex-1 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm transition">Stay signed in</button>
+      </div>
+    </div>
   </div>
 
   <!-- SCRIPT -->
