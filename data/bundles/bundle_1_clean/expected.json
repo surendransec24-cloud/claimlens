@@ -1,0 +1,7 @@
+{
+  "bundle_id": 1,
+  "title": "Clean, Consistent Claim",
+  "should_detect_inconsistency": false,
+  "expected_findings_count": 0,
+  "expected_coverage_status": "covered"
+}

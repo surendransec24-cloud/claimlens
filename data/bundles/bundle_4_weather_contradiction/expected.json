@@ -1,0 +1,7 @@
+{
+  "bundle_id": 4,
+  "title": "Weather Contradicts Stated Conditions",
+  "should_detect_inconsistency": true,
+  "expected_inconsistency_type": "weather_contradiction",
+  "expected_severity": "investigate"
+}

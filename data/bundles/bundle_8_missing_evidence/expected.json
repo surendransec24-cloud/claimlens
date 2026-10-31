@@ -1,0 +1,7 @@
+{
+  "bundle_id": 8,
+  "title": "Missing Key Evidence (No Police Report / Missing EXIF)",
+  "should_detect_inconsistency": true,
+  "expected_inconsistency_type": "missing_key_evidence",
+  "expected_severity": "review"
+}

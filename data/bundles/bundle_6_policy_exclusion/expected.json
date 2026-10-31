@@ -1,0 +1,7 @@
+{
+  "bundle_id": 6,
+  "title": "Claim Excluded by Policy Clause (Commercial Rideshare)",
+  "should_detect_inconsistency": true,
+  "expected_coverage_status": "excluded",
+  "expected_inconsistency_type": "policy_exclusion"
+}

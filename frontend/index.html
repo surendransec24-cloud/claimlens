@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClaimLens — AI Claims Investigator Workbench</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased text-base selection:bg-blue-600 selection:text-white">
+
+  <!-- TOP APP HEADER -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between gap-4 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
+        <i data-lucide="shield-alert" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">ClaimLens</h1>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">Investigator</span>
+        </div>
+        <p class="text-xs text-slate-500 hidden sm:block">AI Motor Claims Decision Support</p>
+      </div>
+    </div>
+
+    <!-- Right Controls: Case Selector, Bundle Quick Load, Help, PII, Audit -->
+    <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+      <div class="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200">
+        <i data-lucide="folder" class="w-4 h-4 text-slate-500"></i>
+        <select id="caseSelector" onchange="switchCase(this.value)" class="bg-transparent text-xs sm:text-sm font-medium text-slate-700 outline-none cursor-pointer max-w-[130px] sm:max-w-[200px] truncate">
+          <option value="">Select Case...</option>
+        </select>
+      </div>
+
+      <button onclick="openBundleModal()" class="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition">
+        <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-600"></i>
+        <span class="hidden sm:inline">Test Bundles</span>
+        <span class="sm:hidden">Tests</span>
+      </button>
+
+      <button onclick="togglePII()" id="piiToggleBtn" class="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2 py-1.5 rounded-lg text-xs font-medium shadow-sm transition" title="Toggle Privacy Masking">
+        <i data-lucide="eye-off" class="w-3.5 h-3.5 text-amber-500"></i>
+        <span id="piiLabel" class="hidden sm:inline">PII Masked</span>
+      </button>
+
+      <button onclick="toggleAuditDrawer()" class="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2 py-1.5 rounded-lg text-xs font-medium shadow-sm transition" title="Audit Log">
+        <i data-lucide="history" class="w-3.5 h-3.5 text-slate-600"></i>
+        <span class="hidden sm:inline">Audit</span>
+      </button>
+
+      <button onclick="openHelpModal()" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-bold border border-slate-200 transition" title="Explain this screen">
+        ?
+      </button>
+    </div>
+  </header>
+
+  <!-- 4-STEP GUIDED FLOW STEPPER -->
+  <div class="bg-white border-b border-slate-200 px-4 sm:px-6 py-2.5">
+    <div class="max-w-4xl mx-auto flex items-center justify-between text-xs sm:text-sm font-medium">
+      
+      <!-- Step 1 Indicator -->
+      <button onclick="goToStep(1)" id="step-btn-1" class="step-nav-btn flex items-center gap-2 text-blue-600 font-semibold focus:outline-none">
+        <span id="step-num-1" class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">1</span>
+        <span>Upload</span>
+      </button>
+      <div id="step-line-1" class="flex-1 h-0.5 mx-2 sm:mx-4 bg-slate-200"></div>
+
+      <!-- Step 2 Indicator -->
+      <button onclick="goToStep(2)" id="step-btn-2" class="step-nav-btn flex items-center gap-2 text-slate-400 focus:outline-none">
+        <span id="step-num-2" class="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold">2</span>
+        <span>Analyzing</span>
+      </button>
+      <div id="step-line-2" class="flex-1 h-0.5 mx-2 sm:mx-4 bg-slate-200"></div>
+
+      <!-- Step 3 Indicator -->
+      <button onclick="goToStep(3)" id="step-btn-3" class="step-nav-btn flex items-center gap-2 text-slate-400 focus:outline-none">
+        <span id="step-num-3" class="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold">3</span>
+        <span>Summary</span>
+      </button>
+      <div id="step-line-3" class="flex-1 h-0.5 mx-2 sm:mx-4 bg-slate-200"></div>
+
+      <!-- Step 4 Indicator -->
+      <button onclick="goToStep(4)" id="step-btn-4" class="step-nav-btn flex items-center gap-2 text-slate-400 focus:outline-none">
+        <span id="step-num-4" class="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold">4</span>
+        <span>Details</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN GUIDED CONTAINER -->
+  <main class="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 pb-24">
+
+    <!-- ============================================================ -->
+    <!-- STEP 1: UPLOAD                                               -->
+    <!-- ============================================================ -->
+    <section id="step-1" class="step-content space-y-6">
+      <div class="text-center max-w-lg mx-auto pt-4 pb-2">
+        <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Upload Claim Evidence</h2>
+        <p class="text-sm text-slate-600 mt-1">Drop the damage photos, policy PDF, repair estimate, and claimant statement to start reasoning.</p>
+      </div>
+
+      <!-- Drag & Drop Area -->
+      <div id="dropZone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-white rounded-2xl p-8 sm:p-12 text-center transition cursor-pointer shadow-sm relative group">
+        <input type="file" id="step1FileInput" multiple class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" onchange="handleFileSelection(this.files)" />
+        <div class="w-14 h-14 mx-auto rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition">
+          <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+        </div>
+        <h3 class="text-base font-semibold text-slate-900">Drop claim files here</h3>
+        <p class="text-sm text-slate-500 mt-1">or click to browse your computer</p>
+        <p class="text-xs text-slate-400 mt-3 font-medium">Accepted: JPG/PNG photos, PDF policy & repair estimates, TXT statements</p>
+      </div>
+
+      <!-- Selected File Chips Container -->
+      <div id="fileChipsContainer" class="hidden space-y-3">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Selected Files (<span id="fileCount">0</span>)</h4>
+        <div id="fileChipsList" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- Claimant & Policy Meta (Optional Expandable) -->
+      <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm">
+        <div class="flex items-center justify-between cursor-pointer" onclick="toggleUploadMetaFields()">
+          <span class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+            <i data-lucide="sliders" class="w-4 h-4 text-slate-400"></i> Claim Details (Optional)
+          </span>
+          <span id="metaExpandIcon" class="text-xs text-slate-500 font-medium">Show</span>
+        </div>
+        <div id="uploadMetaFields" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 text-xs">
+          <div>
+            <label class="block text-slate-600 mb-1">Claimant Name:</label>
+            <input id="inputClaimant" type="text" value="Sarah Jenkins" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-slate-600 mb-1">Policy Number:</label>
+            <input id="inputPolicy" type="text" value="POL-99281-X" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-slate-600 mb-1">Incident Date:</label>
+            <input id="inputDate" type="date" value="2026-05-10" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-slate-600 mb-1">Incident Location:</label>
+            <input id="inputLocation" type="text" value="Main St & 4th Ave, NY" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-blue-500" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+        <button onclick="openBundleModal()" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+          <i data-lucide="sparkles" class="w-4 h-4"></i> Or choose a prepared test claim bundle
+        </button>
+        <button onclick="startAnalysis()" id="analyzeBtn" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-2">
+          <span>Analyze Claim</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- STEP 2: ANALYZING                                            -->
+    <!-- ============================================================ -->
+    <section id="step-2" class="step-content hidden space-y-6">
+      <div class="text-center max-w-lg mx-auto pt-4 pb-2">
+        <div class="w-12 h-12 mx-auto rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-3 animate-spin">
+          <i data-lucide="loader" class="w-6 h-6"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Investigating Claim Evidence</h2>
+        <p class="text-sm text-slate-600 mt-1">Multi-agent pipeline is cross-referencing photos, policy rules, and statements.</p>
+      </div>
+
+      <!-- Plain Language Agent Step Rows -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm divide-y divide-slate-100">
+        
+        <div class="agent-step-row flex items-center justify-between pt-3 first:pt-0" id="row-IntakeAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Reading documents</p>
+              <p class="text-xs text-slate-500">Classifying files, reading PDF tables and photo metadata</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-VisionAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Checking photos</p>
+              <p class="text-xs text-slate-500">Identifying damaged zones, severity, and camera timestamp</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-NarrativeAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Reading claimant statement</p>
+              <p class="text-xs text-slate-500">Extracting facts with sentence citations</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-PolicyAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Reading the policy</p>
+              <p class="text-xs text-slate-500">Evaluating coverage clauses, exclusions, and deductibles</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-ContextAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Checking weather and past claims</p>
+              <p class="text-xs text-slate-500">Historical weather archive and prior vehicle damage history</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-EstimateAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Checking repair estimate</p>
+              <p class="text-xs text-slate-500">Cross-checking line items against photo damage zones</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-ConsistencyEngine">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Comparing the evidence</p>
+              <p class="text-xs text-slate-500">Deterministic checks for conflicts or contradictions</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-HypothesisAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Exploring other explanations</p>
+              <p class="text-xs text-slate-500">Formulating innocent alternatives for any discrepancy</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+        <div class="agent-step-row flex items-center justify-between pt-3" id="row-DecisionSupportAgent">
+          <div class="flex items-center gap-3">
+            <span class="step-icon w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Preparing recommendation</p>
+              <p class="text-xs text-slate-500">Calculating payout range and verifying safety guardrails</p>
+            </div>
+          </div>
+          <span class="step-status text-xs font-medium text-slate-400">Waiting</span>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- STEP 3: SUMMARY (MAIN SCREEN)                                -->
+    <!-- ============================================================ -->
+    <section id="step-3" class="step-content hidden space-y-6">
+      
+      <!-- Top Overview Card: 2-3 sentences + Status Badge -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 shadow-sm relative overflow-hidden">
+        <div id="summaryCardAccent" class="absolute top-0 left-0 right-0 h-1.5 bg-blue-600"></div>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Claim Assessment</span>
+            <span id="summaryClaimId" class="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">CLM-000000</span>
+          </div>
+          
+          <!-- Overall Status Badge -->
+          <div id="overallStatusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <i data-lucide="check-circle" class="w-4 h-4"></i>
+            <span id="overallStatusText">Looks consistent</span>
+          </div>
+        </div>
+
+        <!-- 2-3 sentence plain language case summary -->
+        <p id="summaryOverviewParagraph" class="text-base sm:text-lg text-slate-800 font-medium leading-relaxed">
+          Loading claim assessment...
+        </p>
+
+        <div class="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500">
+          <span>Claimant: <strong id="summaryClaimant" class="text-slate-700 font-semibold">--</strong></span>
+          <span>Policy: <strong id="summaryPolicy" class="text-slate-700 font-mono">--</strong></span>
+          <span>Date: <strong id="summaryDate" class="text-slate-700">--</strong></span>
+        </div>
+      </div>
+
+      <!-- 3 Compact Metric Cards: Coverage, Estimated Payout, Confidence -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <!-- (a) Coverage Card -->
+        <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <span>Coverage</span>
+            <i data-lucide="shield" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="cardCoverageStatus" class="text-lg font-bold text-emerald-700">Covered</span>
+            <span id="cardCoverageClause" class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">Sec. 2.1</span>
+          </div>
+          <p id="cardCoverageReason" class="text-xs text-slate-500">Active collision coverage; deductible applies.</p>
+        </div>
+
+        <!-- (b) Estimated Payout Card -->
+        <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <span>Estimated Payout</span>
+            <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <div class="text-xl font-bold font-mono text-slate-900" id="cardPayoutRange">$0.00</div>
+          <p id="cardPayoutReason" class="text-xs text-slate-500">Total verified repair minus deductible.</p>
+        </div>
+
+        <!-- (c) Confidence Card -->
+        <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <span>Confidence</span>
+            <i data-lucide="compass" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="cardConfidenceBadge" class="text-lg font-bold text-slate-800">High (90%)</span>
+          </div>
+          <p id="cardConfidenceReason" class="text-xs text-slate-500">Supported by photo metadata and policy clauses.</p>
+        </div>
+
+      </div>
+
+      <!-- Key Findings (At most 3 one-line cards) -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500"></i>
+            Key Findings (<span id="keyFindingsCount">0</span>)
+          </h3>
+          <span class="text-xs text-slate-500">Click any finding to inspect details</span>
+        </div>
+        
+        <div id="keyFindingsList" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- What's Missing Box -->
+      <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-2">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <i data-lucide="clipboard-list" class="w-4 h-4 text-blue-500"></i> What's Missing
+        </h3>
+        <ul id="summaryMissingList" class="space-y-1.5 text-sm text-slate-600">
+          <li class="flex items-center gap-2 text-slate-500">
+            <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i> All standard evidence submitted.
+          </li>
+        </ul>
+      </div>
+
+      <!-- Navigation to Step 4 Details -->
+      <div class="pt-2 text-center">
+        <button onclick="goToStep(4)" class="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-5 py-2.5 rounded-xl transition">
+          <span>View Full Evidence & Analysis Details</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- STEP 4: DETAILS (EXPANDED TABS)                              -->
+    <!-- ============================================================ -->
+    <section id="step-4" class="step-content hidden space-y-6">
+      
+      <!-- Back to Summary Button -->
+      <div class="flex items-center justify-between">
+        <button onclick="goToStep(3)" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm transition">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          <span>Back to Summary</span>
+        </button>
+        <button onclick="openSupplementalModal()" class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg shadow-sm transition">
+          <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+          <span>Add More Evidence</span>
+        </button>
+      </div>
+
+      <!-- Detail Tabs Navigation -->
+      <div class="bg-white rounded-xl border border-slate-200 p-1 flex gap-1 text-xs font-medium shadow-sm overflow-x-auto">
+        <button onclick="switchDetailTab('evidence')" id="dtab-evidence" class="dtab-btn flex-1 py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="files" class="w-3.5 h-3.5"></i>
+          <span>Evidence</span>
+        </button>
+        <button onclick="switchDetailTab('findings')" id="dtab-findings" class="dtab-btn flex-1 py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="alert-octagon" class="w-3.5 h-3.5"></i>
+          <span>Findings & Matrix</span>
+        </button>
+        <button onclick="switchDetailTab('policy')" id="dtab-policy" class="dtab-btn flex-1 py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="file-check" class="w-3.5 h-3.5"></i>
+          <span>Policy</span>
+        </button>
+        <button onclick="switchDetailTab('timeline')" id="dtab-timeline" class="dtab-btn flex-1 py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+          <span>Timeline</span>
+        </button>
+        <button onclick="switchDetailTab('audit')" id="dtab-audit" class="dtab-btn flex-1 py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+          <span>How AI Decided</span>
+        </button>
+      </div>
+
+      <!-- DETAIL TAB 1: EVIDENCE -->
+      <div id="dpanel-evidence" class="detail-panel space-y-4">
+        <div id="evidenceCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
+        <!-- Selected Photo Damage & EXIF Inspector -->
+        <div id="photoInspectorCard" class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4 hidden">
+          <div class="flex items-center justify-between">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="camera" class="w-4 h-4 text-blue-600"></i> Photo Damage & EXIF Details
+            </h4>
+            <span id="photoFileNameBadge" class="text-xs font-mono text-slate-500">--</span>
+          </div>
+          <div class="bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center min-h-[260px] p-2">
+            <img id="detailPhotoImage" src="" alt="Photo Evidence" class="max-h-[360px] w-auto object-contain rounded" />
+          </div>
+          <div id="photoMetaDetails" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div><span class="text-slate-500 block">EXIF Date:</span> <span id="photoExifTs" class="font-mono text-slate-800 font-semibold">--</span></div>
+            <div><span class="text-slate-500 block">Camera:</span> <span id="photoCamera" class="font-mono text-slate-800">--</span></div>
+            <div><span class="text-slate-500 block">GPS:</span> <span id="photoGPS" class="font-mono text-slate-800">--</span></div>
+            <div><span class="text-slate-500 block">Date Match:</span> <span id="photoDateMatch" class="font-semibold">--</span></div>
+          </div>
+          <div id="photoZonesDetected" class="text-xs"></div>
+        </div>
+      </div>
+
+      <!-- DETAIL TAB 2: FULL FINDINGS & CONSISTENCY MATRIX -->
+      <div id="dpanel-findings" class="detail-panel hidden space-y-5">
+        
+        <!-- Findings Expandable List -->
+        <div id="fullFindingsContainer" class="space-y-4"></div>
+
+        <!-- Optional Comparison Matrix Toggle -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
+          <div class="flex items-center justify-between cursor-pointer" onclick="toggleMatrixTable()">
+            <div>
+              <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="grid" class="w-4 h-4 text-emerald-600"></i> Does the evidence agree? (Comparison Table)
+              </h4>
+              <p class="text-xs text-slate-500">Deterministic code-computed cross check of facts against each file</p>
+            </div>
+            <span id="matrixToggleLabel" class="text-xs font-semibold text-blue-600">Show Table</span>
+          </div>
+
+          <div id="matrixTableContainer" class="hidden pt-3 border-t border-slate-100 overflow-x-auto">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr id="matrixHeaderRow" class="border-b border-slate-200 text-slate-500 font-semibold bg-slate-50">
+                  <th class="p-2.5 w-[240px]">Claimed Fact</th>
+                </tr>
+              </thead>
+              <tbody id="matrixBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL TAB 3: POLICY -->
+      <div id="dpanel-policy" class="detail-panel hidden space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Collision Coverage</span>
+            <p id="policyCollisionScope" class="text-sm font-bold text-slate-900 mt-1">Section 2.1</p>
+            <p class="text-xs text-slate-500 mt-0.5">Deductible: $500.00 | Limit: $50,000</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Policy Status</span>
+            <p id="policyPeriodStatus" class="text-sm font-bold text-emerald-700 mt-1">Active</p>
+            <p class="text-xs text-slate-500 mt-0.5">In force during incident date</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Commercial Exclusion</span>
+            <p id="policyExclusionStatus" class="text-sm font-bold text-slate-800 mt-1">No exclusion</p>
+            <p class="text-xs text-slate-500 mt-0.5">Section 4.2 Rideshare check</p>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
+          <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Evaluated Clauses & Rules</h4>
+          <div id="policyEvaluationsTable" class="space-y-3 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- DETAIL TAB 4: TIMELINE -->
+      <div id="dpanel-timeline" class="detail-panel hidden space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div class="md:col-span-7 bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Incident Chronology</h4>
+            <div id="timelineContainer" class="relative pl-6 space-y-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200"></div>
+          </div>
+          <div class="md:col-span-5 bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Impact Vector Model</h4>
+            <div id="impactModelCard" class="text-xs space-y-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL TAB 5: AUDIT / HOW AI DECIDED -->
+      <div id="dpanel-audit" class="detail-panel hidden space-y-4">
+        <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-sm font-bold text-slate-900">Agent Decision Trace (For Auditors)</h4>
+              <p class="text-xs text-slate-500">Immutable ledger of models called, prompt versions, citations, and execution logs.</p>
+            </div>
+            <span class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 font-mono">Tamper-Evident</span>
+          </div>
+          <div id="auditLogEntries" class="space-y-2 text-xs pt-2"></div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- STICKY ADJUSTER DECISION BAR (STEPS 3 & 4) -->
+  <footer id="adjusterBar" class="bg-white border-t border-slate-200 px-4 sm:px-6 py-3.5 sticky bottom-0 z-30 shadow-md">
+    <div class="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold text-slate-800">Adjuster Decision:</p>
+        <p class="text-[11px] text-slate-500">AI supports the adjuster. A human makes the final call.</p>
+      </div>
+
+      <div class="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+        <button onclick="promptDecision('Request More Info')" class="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-4 py-2 rounded-xl text-xs font-semibold transition">
+          <i data-lucide="help-circle" class="w-4 h-4 text-amber-600"></i>
+          <span>Request Info</span>
+        </button>
+
+        <button onclick="promptDecision('Escalated')" class="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 px-4 py-2 rounded-xl text-xs font-semibold transition">
+          <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-600"></i>
+          <span>Escalate</span>
+        </button>
+
+        <button onclick="promptDecision('Approved')" class="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-xl text-xs font-semibold shadow-sm transition">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Approve Claim</span>
+        </button>
+      </div>
+    </div>
+    <div class="max-w-4xl mx-auto text-center pt-2">
+      <p class="text-[11px] text-slate-400">AI-assisted recommendation. A human adjuster makes the final decision.</p>
+    </div>
+  </footer>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE-OVER FINDING DETAIL DRAWER                             -->
+  <!-- ============================================================ -->
+  <div id="findingDrawer" class="fixed inset-y-0 right-0 w-full max-w-lg bg-white border-l border-slate-200 z-50 p-6 overflow-y-auto transform translate-x-full transition-transform duration-300 shadow-2xl flex flex-col justify-between">
+    <div class="space-y-5">
+      <!-- Drawer Header -->
+      <div class="flex items-start justify-between pb-3 border-b border-slate-100 gap-3">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span id="drawerFindingId" class="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">F-001</span>
+            <span id="drawerFindingSev" class="text-xs font-semibold px-2.5 py-0.5 rounded-full uppercase">Investigate</span>
+          </div>
+          <h3 id="drawerFindingTitle" class="text-base font-bold text-slate-900 leading-snug">--</h3>
+        </div>
+        <button onclick="closeFindingDrawer()" class="text-slate-400 hover:text-slate-700 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Section: What doesn't match -->
+      <div class="space-y-1.5">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <i data-lucide="git-commit" class="w-4 h-4 text-rose-500"></i> What doesn't match
+        </h4>
+        <div id="drawerInconsistency" class="bg-rose-50/60 border border-rose-100 rounded-xl p-3.5 text-xs text-rose-950 leading-relaxed font-medium"></div>
+      </div>
+
+      <!-- Section: Other possible explanations (Dual Hypotheses) -->
+      <div class="space-y-1.5">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <i data-lucide="help-circle" class="w-4 h-4 text-blue-500"></i> Other possible explanations
+        </h4>
+        <div id="drawerExplanations" class="space-y-2 text-xs"></div>
+      </div>
+
+      <!-- Section: What we still need -->
+      <div class="space-y-1.5">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <i data-lucide="clipboard-list" class="w-4 h-4 text-amber-500"></i> What we still need
+        </h4>
+        <ul id="drawerMissingEvidence" class="space-y-1 text-xs text-slate-700 list-disc pl-5"></ul>
+      </div>
+
+      <!-- Section: Suggested next step -->
+      <div class="space-y-1.5">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <i data-lucide="arrow-right-circle" class="w-4 h-4 text-emerald-600"></i> Suggested next step
+        </h4>
+        <p id="drawerAction" class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-950 font-medium"></p>
+      </div>
+
+      <!-- Section: Confidence & Uncertainty -->
+      <div class="space-y-1.5">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Confidence & Uncertainty</h4>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-600">Certainty Level:</span>
+            <span id="drawerConfidenceValue" class="font-bold text-slate-900 font-mono">--</span>
+          </div>
+          <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+            <div id="drawerConfidenceBar" class="bg-blue-600 h-full rounded-full w-0 transition-all duration-300"></div>
+          </div>
+          <p id="drawerUncertaintyNote" class="text-[11px] text-slate-500 italic pt-1"></p>
+        </div>
+      </div>
+
+      <!-- Section: Sources -->
+      <div class="space-y-1.5">
+        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Evidence Sources</h4>
+        <div id="drawerSources" class="flex flex-wrap gap-1.5 text-xs"></div>
+      </div>
+    </div>
+
+    <div class="pt-6 border-t border-slate-100 text-center">
+      <button onclick="closeFindingDrawer()" class="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition">
+        Close Details
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: ADJUSTER DECISION JUSTIFICATION                      -->
+  <!-- ============================================================ -->
+  <div id="decisionModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 id="decisionModalTitle" class="text-base font-bold text-slate-900">Record Adjuster Decision</h3>
+        <button onclick="closeDecisionModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p class="text-xs text-slate-500">
+        Every action is recorded in an immutable audit log with timestamp, adjuster identity, and justification rationale.
+      </p>
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1.5">Mandatory Reason / Audit Rationale:</label>
+        <textarea id="decisionReasonText" rows="4" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-blue-500" placeholder="State explicit justification based on evidence and findings..."></textarea>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeDecisionModal()" class="px-4 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-800">Cancel</button>
+        <button onclick="submitDecision()" class="px-5 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm">Confirm Decision</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: LOAD SYNTHETIC BUNDLE                                -->
+  <!-- ============================================================ -->
+  <div id="bundleModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-xl border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="layers" class="w-5 h-5 text-indigo-600"></i> Choose a Test Claim Bundle
+        </h3>
+        <button onclick="closeBundleModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p class="text-xs text-slate-500">
+        Select one of 8 pre-built claim scenarios to see how ClaimLens reasons across different evidence types:
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[420px] overflow-y-auto pr-1">
+        <button onclick="loadBundlePreset(1)" class="p-3 bg-slate-50 hover:bg-emerald-50/60 rounded-xl border border-slate-200 hover:border-emerald-300 text-left transition group">
+          <div class="font-semibold text-xs text-emerald-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 1. Clean Consistent Claim
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Rear-end story, matching rear photo, dry weather. 0 inconsistencies.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(2)" class="p-3 bg-slate-50 hover:bg-amber-50/60 rounded-xl border border-slate-200 hover:border-amber-300 text-left transition group">
+          <div class="font-semibold text-xs text-amber-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 2. Front Damage vs Rear Story
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Claimant says rear-ended, but photo shows front crush.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(3)" class="p-3 bg-slate-50 hover:bg-amber-50/60 rounded-xl border border-slate-200 hover:border-amber-300 text-left transition group">
+          <div class="font-semibold text-xs text-amber-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 3. Photo EXIF Date Mismatch
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Claimed May 2026; photo metadata reveals taken Nov 2025.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(4)" class="p-3 bg-slate-50 hover:bg-amber-50/60 rounded-xl border border-slate-200 hover:border-amber-300 text-left transition group">
+          <div class="font-semibold text-xs text-amber-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 4. Weather Contradiction
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Claims black ice blizzard; weather archive shows 24°C clear.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(5)" class="p-3 bg-slate-50 hover:bg-amber-50/60 rounded-xl border border-slate-200 hover:border-amber-300 text-left transition group">
+          <div class="font-semibold text-xs text-amber-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 5. Estimate Phantom Items
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Door scratch estimate adds windshield & suspension items.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(6)" class="p-3 bg-slate-50 hover:bg-rose-50/60 rounded-xl border border-slate-200 hover:border-rose-300 text-left transition group">
+          <div class="font-semibold text-xs text-rose-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span> 6. Excluded by Policy Clause
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Commercial rideshare activity excluded under Section 4.2.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(7)" class="p-3 bg-slate-50 hover:bg-amber-50/60 rounded-xl border border-slate-200 hover:border-amber-300 text-left transition group">
+          <div class="font-semibold text-xs text-amber-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 7. Repeat Claim / Recurrent Damage
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Identical right-quarter claim made 90 days earlier.</div>
+        </button>
+
+        <button onclick="loadBundlePreset(8)" class="p-3 bg-slate-50 hover:bg-amber-50/60 rounded-xl border border-slate-200 hover:border-amber-300 text-left transition group">
+          <div class="font-semibold text-xs text-amber-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 8. Missing Key Evidence
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">Multi-car highway claim missing required police report.</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: SUPPLEMENTAL EVIDENCE UPLOAD (INCREMENTAL)           -->
+  <!-- ============================================================ -->
+  <div id="supplementalModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-600"></i> Add Supplemental Evidence
+        </h3>
+        <button onclick="closeSupplementalModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p class="text-xs text-slate-500">
+        Adding supplemental evidence triggers <strong>incremental re-reasoning</strong>: only affected agents re-run and an updated diff view will show what resolved or changed.
+      </p>
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1.5">Select Supplemental Document or Photo:</label>
+        <input id="supplementalFileInput" type="file" multiple class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700" />
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeSupplementalModal()" class="px-4 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-800">Cancel</button>
+        <button onclick="submitSupplementalEvidence()" class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">Upload & Re-Reason</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: HELP / EXPLAIN THIS SCREEN                           -->
+  <!-- ============================================================ -->
+  <div id="helpModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="help-circle" class="w-5 h-5 text-blue-600"></i> About This Screen
+        </h3>
+        <button onclick="closeHelpModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div id="helpModalText" class="text-xs sm:text-sm text-slate-600 space-y-2 leading-relaxed">
+        <!-- 3-line explanation updated per step -->
+      </div>
+      <div class="text-right pt-2">
+        <button onclick="closeHelpModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- AUDIT TRAIL SLIDE-OVER DRAWER                                -->
+  <!-- ============================================================ -->
+  <div id="auditDrawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-slate-200 z-50 p-6 overflow-y-auto transform translate-x-full transition-transform duration-300 shadow-2xl">
+    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+      <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+        <i data-lucide="history" class="w-4 h-4 text-cyan-600"></i> Immutable Audit Trail
+      </h3>
+      <button onclick="toggleAuditDrawer()" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <p class="text-xs text-slate-500 my-2">Every agent execution, prompt version, Gemini call, and adjuster decision is immutably logged.</p>
+    <div id="auditDrawerEntries" class="space-y-2.5 text-xs"></div>
+  </div>
+
+  <!-- SCRIPT -->
+  <script src="/workbench.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "bundle_id": 3,
+  "title": "Photo EXIF Date Different from Claimed Date",
+  "should_detect_inconsistency": true,
+  "expected_inconsistency_type": "exif_date_conflict",
+  "expected_severity": "investigate"
+}

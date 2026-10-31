@@ -1,0 +1,7 @@
+{
+  "bundle_id": 5,
+  "title": "Estimate Phantom Items Not In Photos",
+  "should_detect_inconsistency": true,
+  "expected_inconsistency_type": "phantom_estimate_items",
+  "expected_severity": "review"
+}

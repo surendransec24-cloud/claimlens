@@ -1,0 +1,7 @@
+{
+  "bundle_id": 7,
+  "title": "Repeat Claimant with Identical Damage Pattern",
+  "should_detect_inconsistency": true,
+  "expected_inconsistency_type": "claims_history_match",
+  "expected_severity": "review"
+}

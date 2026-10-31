@@ -1,0 +1,37 @@
+# Secrets and Environment Variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Databases and Local Storage
+*.db
+*.sqlite
+*.sqlite3
+claimlens.db
+uploads/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node / Frontend artifacts (if any)
+node_modules/
+dist/
+.vite/
