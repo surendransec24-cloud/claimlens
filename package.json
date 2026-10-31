@@ -1,0 +1,21 @@
+{
+  "name": "claimlens",
+  "version": "1.0.0",
+  "description": "ClaimLens — AI Claims Investigator for Motor Insurance",
+  "scripts": {
+    "dev": ".\\venv\\Scripts\\uvicorn.exe backend.api.main:app --host 127.0.0.1 --port 8000 --reload",
+    "start": ".\\venv\\Scripts\\uvicorn.exe backend.api.main:app --host 127.0.0.1 --port 8000",
+    "test": ".\\venv\\Scripts\\python.exe -m pytest backend/tests/ -v",
+    "eval": ".\\venv\\Scripts\\python.exe eval/eval_harness.py",
+    "generate-data": ".\\venv\\Scripts\\python.exe data/generate_bundles.py"
+  },
+  "keywords": [
+    "ai",
+    "claims",
+    "insurance",
+    "fastapi",
+    "gemini"
+  ],
+  "author": "ClaimLens Team",
+  "license": "MIT"
+}
